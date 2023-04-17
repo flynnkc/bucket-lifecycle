@@ -1,6 +1,6 @@
 schema_version: 20180708
 name: bucket-lifecycle
-version: 0.0.13
+version: 0.0.14
 runtime: go
 build_image: fnproject/go:1.15-dev
 run_image: fnproject/go:1.15

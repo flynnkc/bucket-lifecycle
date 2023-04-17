@@ -21,29 +21,6 @@ var (
 	logger *log.Logger
 )
 
-type message struct {
-	EventTime string `json:"eventTime"`
-	Source    string `json:"source"`
-	Data      data   `json:"data"`
-}
-
-type data struct {
-	CompartmentID      string  `json:"compartmentId"`
-	CompartmentName    string  `json:"compartmentName"`
-	ResourceName       string  `json:"resourceName"`
-	ResourceID         string  `json:"resourceId"`
-	AvailabilityDomain string  `json:"availabilityDomain"`
-	AdditionalDetails  details `json:"additionalDetails"`
-}
-
-type details struct {
-	BucketName       string `json:"bucketName"`
-	PublicAccessType string `json:"publicAccessType"`
-	Versioning       string `json:"versioning"`
-	Namespace        string `json:"namespace"`
-	ETag             string `json:"eTag"`
-}
-
 func init() {
 	// Ensure logger is writing to std out
 	logger = log.New(os.Stdout, "", log.LstdFlags)
@@ -63,6 +40,10 @@ func myHandler(ctx context.Context, in io.Reader, out io.Writer) {
 	config, err := auth.ResourcePrincipalConfigurationProvider()
 	helpers.FatalIfError(err)
 
+	if debug {
+		logger.Printf("Client config: %+v", config)
+	}
+
 	var v message
 	err = json.NewDecoder(in).Decode(&v)
 	helpers.FatalIfError(err)
@@ -70,10 +51,7 @@ func myHandler(ctx context.Context, in io.Reader, out io.Writer) {
 		logger.Printf("Message: %+v\n", v)
 	}
 
-	logger.Printf("Attempting to add lifecycle policy to bucket %s\n", v.Data.AdditionalDetails.BucketName)
-	logger.Printf("{\neventTime: %v\ncompartmentName: %v,\ncompartmentId: %v\navailabilityDomain: %v,\neTag: %v\n}",
-		v.EventTime, v.Data.CompartmentName, v.Data.CompartmentID,
-		v.Data.AvailabilityDomain, v.Data.AdditionalDetails.ETag)
+	logger.Printf("Attempting to add lifecycle policy to bucket %s in compartment %s\n", v.Data.AdditionalDetails.BucketName, v.Data.CompartmentID)
 
 	client, err := objectstorage.NewObjectStorageClientWithConfigurationProvider(config)
 	helpers.FatalIfError(err)
@@ -91,16 +69,27 @@ func myHandler(ctx context.Context, in io.Reader, out io.Writer) {
 		},
 	}
 
+	logger.Printf("Action: %v in %v %v\n", objectLifecyclePolicyDetails.Items[0].Action,
+		objectLifecyclePolicyDetails.Items[0].TimeAmount, objectLifecyclePolicyDetails.Items[0].TimeUnit)
+
 	lifecyclePolicyRequest := objectstorage.PutObjectLifecyclePolicyRequest{
 		BucketName:                      common.String(v.Data.AdditionalDetails.BucketName),
 		NamespaceName:                   common.String(v.Data.AdditionalDetails.Namespace),
 		PutObjectLifecyclePolicyDetails: objectLifecyclePolicyDetails,
 	}
 
-	logger.Printf("Sending request: %+v\n", lifecyclePolicyRequest)
+	if debug {
+		logger.Printf("Sending request: %+v\n", lifecyclePolicyRequest)
+	} else {
+		logger.Printf("Sending Request\n")
+	}
 
 	resp, err := client.PutObjectLifecyclePolicy(context.Background(), lifecyclePolicyRequest)
 	helpers.FatalIfError(err)
 
-	logger.Printf("Response: %+v\n", resp)
+	if debug {
+		logger.Printf("Response: %+v\n", resp)
+	} else {
+		logger.Printf("Response: %v\n", resp.RawResponse.Status)
+	}
 }
