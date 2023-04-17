@@ -4,6 +4,7 @@ go 1.20
 
 require (
 	github.com/fnproject/fdk-go v0.0.30
+	github.com/oracle/oci-go-sdk v24.3.0+incompatible
 	github.com/oracle/oci-go-sdk/v65 v65.35.0
 )
 
