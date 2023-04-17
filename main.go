@@ -7,38 +7,64 @@ import (
 	"io"
 	"log"
 	"os"
+	"strconv"
 
 	"github.com/oracle/oci-go-sdk/common"
 	"github.com/oracle/oci-go-sdk/common/auth"
 	"github.com/oracle/oci-go-sdk/objectstorage"
-	"github.com/oracle/oci-go-sdk/v65/example/helpers"
 
 	fdk "github.com/fnproject/fdk-go"
 )
 
 var (
-	debug  bool
-	logger *log.Logger
+	logger     *log.Logger
+	errLog     *log.Logger
+	debug      bool
+	action     string
+	timeamount string
 )
 
 func init() {
-	// Ensure logger is writing to std out
+	// Ensure logger is writing to Stdout
+	// Stdout is preferred by OCI Functions
 	logger = log.New(os.Stdout, "", log.LstdFlags)
+	errLog = log.New(os.Stdout, "ERR: ", log.Lshortfile)
+
+	// Environment variable capture
 	_, debug = os.LookupEnv("DEBUG")
+
+	var ok bool
+	action, ok = os.LookupEnv("ACTION")
+	if !ok {
+		action = "ARCHIVE"
+	}
+
+	timeamount, ok = os.LookupEnv("TIMEAMOUNT")
+	if !ok {
+		timeamount = "31"
+	}
 }
 
 func main() {
 	if debug {
-		log.Printf("Value of variable debug: %v\n", debug)
+		log.Printf("Value of environment variables: {debug: %v, action: %v, timeamount: %v\n",
+			debug, action, timeamount)
 	}
 	fdk.Handle(fdk.HandlerFunc(myHandler))
 }
 
 func myHandler(ctx context.Context, in io.Reader, out io.Writer) {
-	logger.Printf("Context data: %v\n", ctx)
+	if debug {
+		logger.Printf("Context data: %v\n", ctx)
+	}
+
+	// Convert timeamount to usable int64
+	time, err := strconv.ParseInt(timeamount, 10, 64)
+	logFatal(err)
+
 	// Try resource principal configuration and log before exit 1 if error
 	config, err := auth.ResourcePrincipalConfigurationProvider()
-	helpers.FatalIfError(err)
+	logFatal(err)
 
 	if debug {
 		logger.Printf("Client config: %+v", config)
@@ -46,7 +72,7 @@ func myHandler(ctx context.Context, in io.Reader, out io.Writer) {
 
 	var v message
 	err = json.NewDecoder(in).Decode(&v)
-	helpers.FatalIfError(err)
+	logFatal(err)
 	if debug {
 		logger.Printf("Message: %+v\n", v)
 	}
@@ -54,14 +80,14 @@ func myHandler(ctx context.Context, in io.Reader, out io.Writer) {
 	logger.Printf("Attempting to add lifecycle policy to bucket %s in compartment %s\n", v.Data.AdditionalDetails.BucketName, v.Data.CompartmentID)
 
 	client, err := objectstorage.NewObjectStorageClientWithConfigurationProvider(config)
-	helpers.FatalIfError(err)
+	logFatal(err)
 
 	objectLifecyclePolicyDetails := objectstorage.PutObjectLifecyclePolicyDetails{
 		Items: []objectstorage.ObjectLifecycleRule{
 			objectstorage.ObjectLifecycleRule{
 				Name:       common.String("DefaultLifecycleRule"),
-				Action:     common.String("ARCHIVE"),
-				TimeAmount: common.Int64(31),
+				Action:     common.String(action),
+				TimeAmount: common.Int64(time),
 				TimeUnit:   objectstorage.ObjectLifecycleRuleTimeUnitDays,
 				IsEnabled:  common.Bool(true),
 				// Target: common.String("objects")
@@ -69,8 +95,8 @@ func myHandler(ctx context.Context, in io.Reader, out io.Writer) {
 		},
 	}
 
-	logger.Printf("Action: %v in %v %v\n", objectLifecyclePolicyDetails.Items[0].Action,
-		objectLifecyclePolicyDetails.Items[0].TimeAmount, objectLifecyclePolicyDetails.Items[0].TimeUnit)
+	logger.Printf("Action: %v in %v %v\n", *objectLifecyclePolicyDetails.Items[0].Action,
+		*objectLifecyclePolicyDetails.Items[0].TimeAmount, objectLifecyclePolicyDetails.Items[0].TimeUnit)
 
 	lifecyclePolicyRequest := objectstorage.PutObjectLifecyclePolicyRequest{
 		BucketName:                      common.String(v.Data.AdditionalDetails.BucketName),
@@ -85,11 +111,17 @@ func myHandler(ctx context.Context, in io.Reader, out io.Writer) {
 	}
 
 	resp, err := client.PutObjectLifecyclePolicy(context.Background(), lifecyclePolicyRequest)
-	helpers.FatalIfError(err)
+	logFatal(err)
 
 	if debug {
 		logger.Printf("Response: %+v\n", resp)
 	} else {
 		logger.Printf("Response: %v\n", resp.RawResponse.Status)
+	}
+}
+
+func logFatal(err error) {
+	if err != nil {
+		errLog.Fatalln(err)
 	}
 }
