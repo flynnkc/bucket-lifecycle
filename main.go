@@ -9,9 +9,9 @@ import (
 	"os"
 	"strconv"
 
-	"github.com/oracle/oci-go-sdk/common"
-	"github.com/oracle/oci-go-sdk/common/auth"
-	"github.com/oracle/oci-go-sdk/objectstorage"
+	"github.com/oracle/oci-go-sdk/v65/common"
+	"github.com/oracle/oci-go-sdk/v65/common/auth"
+	"github.com/oracle/oci-go-sdk/v65/objectstorage"
 
 	fdk "github.com/fnproject/fdk-go"
 )
@@ -34,11 +34,13 @@ func init() {
 	_, debug = os.LookupEnv("DEBUG")
 
 	var ok bool
+	// Options "ARCHIVE", "INFREQUENT_ACCESS", "DELETE", & "ABORT"
 	action, ok = os.LookupEnv("ACTION")
 	if !ok {
 		action = "ARCHIVE"
 	}
 
+	// Default to 31 days
 	timeamount, ok = os.LookupEnv("TIMEAMOUNT")
 	if !ok {
 		timeamount = "31"
@@ -50,6 +52,7 @@ func main() {
 		log.Printf("Value of environment variables: {debug: %v, action: %v, timeamount: %v\n",
 			debug, action, timeamount)
 	}
+
 	fdk.Handle(fdk.HandlerFunc(myHandler))
 }
 
@@ -82,9 +85,11 @@ func myHandler(ctx context.Context, in io.Reader, out io.Writer) {
 	client, err := objectstorage.NewObjectStorageClientWithConfigurationProvider(config)
 	logFatal(err)
 
+	// Set lifecycle rule with duration time and action to enforce rules on object storage
+	// buckets.
 	objectLifecyclePolicyDetails := objectstorage.PutObjectLifecyclePolicyDetails{
 		Items: []objectstorage.ObjectLifecycleRule{
-			objectstorage.ObjectLifecycleRule{
+			{
 				Name:       common.String("DefaultLifecycleRule"),
 				Action:     common.String(action),
 				TimeAmount: common.Int64(time),
